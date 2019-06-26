@@ -1,15 +1,17 @@
-from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from __future__ import absolute_import
+
+import numpy as np
+import gym
+
+import torch
+from torch import nn as nn
+from torch.nn import functional as F
 
 from DotmapUtils import get_required_argument
 from config.utils import swish, get_affine_params
 
-import gym
-import numpy as np
-import torch
-from torch import nn as nn
-from torch.nn import functional as F
 
 TORCH_DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
@@ -24,13 +26,15 @@ class PtModel(nn.Module):
         self.in_features = in_features
         self.out_features = out_features
 
-        self.lin0_w, self.lin0_b = get_affine_params(ensemble_size, in_features, 500)
+        self.lin0_w, self.lin0_b = get_affine_params(ensemble_size, in_features, 200)
 
-        self.lin1_w, self.lin1_b = get_affine_params(ensemble_size, 500, 500)
+        self.lin1_w, self.lin1_b = get_affine_params(ensemble_size, 200, 200)
 
-        self.lin2_w, self.lin2_b = get_affine_params(ensemble_size, 500, 500)
+        self.lin2_w, self.lin2_b = get_affine_params(ensemble_size, 200, 200)
 
-        self.lin3_w, self.lin3_b = get_affine_params(ensemble_size, 500, out_features)
+        self.lin3_w, self.lin3_b = get_affine_params(ensemble_size, 200, 200)
+
+        self.lin4_w, self.lin4_b = get_affine_params(ensemble_size, 200, out_features)
 
         self.inputs_mu = nn.Parameter(torch.zeros(in_features), requires_grad=False)
         self.inputs_sigma = nn.Parameter(torch.zeros(in_features), requires_grad=False)
@@ -40,12 +44,13 @@ class PtModel(nn.Module):
 
     def compute_decays(self):
 
-        lin0_decays = 0.0001 * (self.lin0_w ** 2).sum() / 2.0
-        lin1_decays = 0.00025 * (self.lin1_w ** 2).sum() / 2.0
-        lin2_decays = 0.00025 * (self.lin2_w ** 2).sum() / 2.0
-        lin3_decays = 0.0005 * (self.lin3_w ** 2).sum() / 2.0
+        lin0_decays = 0.000025 * (self.lin0_w ** 2).sum() / 2.0
+        lin1_decays = 0.00005 * (self.lin1_w ** 2).sum() / 2.0
+        lin2_decays = 0.000075 * (self.lin2_w ** 2).sum() / 2.0
+        lin3_decays = 0.000075 * (self.lin3_w ** 2).sum() / 2.0
+        lin4_decays = 0.0001 * (self.lin4_w ** 2).sum() / 2.0
 
-        return lin0_decays + lin1_decays + lin2_decays + lin3_decays
+        return lin0_decays + lin1_decays + lin2_decays + lin3_decays + lin4_decays
 
     def fit_input_stats(self, data):
 
@@ -71,6 +76,9 @@ class PtModel(nn.Module):
         inputs = swish(inputs)
 
         inputs = inputs.matmul(self.lin3_w) + self.lin3_b
+        inputs = swish(inputs)
+
+        inputs = inputs.matmul(self.lin4_w) + self.lin4_b
 
         mean = inputs[:, :, :self.out_features // 2]
 
@@ -84,30 +92,25 @@ class PtModel(nn.Module):
         return mean, torch.exp(logvar)
 
 
-class CartpoleConfigModule:
-    ENV_NAME = "MBRLCartpole-v0"
-    #ENV_NAME = "Pendulum-v0"
-    TASK_HORIZON = 200
-    NTRAIN_ITERS = 15
+class HalfCheetahConfigModule:
+    ENV_NAME = "HalfCheetah-v1"
+    TASK_HORIZON = 1000
+    NTRAIN_ITERS = 300
     NROLLOUTS_PER_ITER = 1
-    PLAN_HOR = 25
-    MODEL_IN, MODEL_OUT = 6, 4
-    GP_NINDUCING_POINTS = 200
-
-    # Create and move this tensor to GPU so that
-    # we do not waste time moving it repeatedly to GPU later
-    ee_sub = torch.tensor([0.0, 0.6], device=TORCH_DEVICE, dtype=torch.float)
+    PLAN_HOR = 30
+    MODEL_IN, MODEL_OUT = 24, 18
+    GP_NINDUCING_POINTS = 300
 
     def __init__(self):
         self.ENV = gym.make(self.ENV_NAME)
         self.NN_TRAIN_CFG = {"epochs": 5}
         self.OPT_CFG = {
             "Random": {
-                "popsize": 2000
+                "popsize": 2500
             },
             "CEM": {
-                "popsize": 400,
-                "num_elites": 40,
+                "popsize": 500,
+                "num_elites": 50,
                 "max_iters": 5,
                 "alpha": 0.1
             }
@@ -116,46 +119,43 @@ class CartpoleConfigModule:
     @staticmethod
     def obs_preproc(obs):
         if isinstance(obs, np.ndarray):
-           return np.concatenate([np.sin(obs[:, 1:2]), np.cos(obs[:, 1:2]), obs[:, :1], obs[:, 2:]], axis=1)
+            return np.concatenate([obs[:, 1:2], np.sin(obs[:, 2:3]), np.cos(obs[:, 2:3]), obs[:, 3:]], axis=1)
         elif isinstance(obs, torch.Tensor):
             return torch.cat([
-                obs[:, 1:2].sin(),
-                obs[:, 1:2].cos(),
-                obs[:, :1],
-                obs[:, 2:]
+                obs[:, 1:2],
+                obs[:, 2:3].sin(),
+                obs[:, 2:3].cos(),
+                obs[:, 3:]
             ], dim=1)
 
     @staticmethod
     def obs_postproc(obs, pred):
-        return obs + pred
+
+        assert isinstance(obs, torch.Tensor)
+
+        return torch.cat([
+            pred[:, :1],
+            obs[:, 1:] + pred[:, 1:]
+        ], dim=1)
 
     @staticmethod
     def targ_proc(obs, next_obs):
-        return next_obs - obs
+
+        if isinstance(obs, np.ndarray):
+            return np.concatenate([next_obs[:, :1], next_obs[:, 1:] - obs[:, 1:]], axis=1)
+        elif isinstance(obs, torch.Tensor):
+            return torch.cat([
+                next_obs[:, :1],
+                next_obs[:, 1:] - obs[:, 1:]
+            ], dim=1)
 
     @staticmethod
     def obs_cost_fn(obs):
-        ee_pos = CartpoleConfigModule._get_ee_pos(obs)
-
-        ee_pos -= CartpoleConfigModule.ee_sub
-
-        ee_pos = ee_pos ** 2
-
-        ee_pos = - ee_pos.sum(dim=1)
-
-        return - (ee_pos / (0.6 ** 2)).exp()
+        return -obs[:, 0]
 
     @staticmethod
     def ac_cost_fn(acs):
-        return 0.01 * (acs ** 2).sum(dim=1)
-
-    @staticmethod
-    def _get_ee_pos(obs):
-        x0, theta = obs[:, :1], obs[:, 1:2]
-
-        return torch.cat([
-            x0 - 0.6 * theta.sin(), -0.6 * theta.cos()
-        ], dim=1)
+        return 0.1 * (acs ** 2).sum(dim=1)
 
     def nn_constructor(self, model_init_cfg):
 
@@ -174,4 +174,4 @@ class CartpoleConfigModule:
         return model
 
 
-CONFIG_MODULE = CartpoleConfigModule
+CONFIG_MODULE = HalfCheetahConfigModule

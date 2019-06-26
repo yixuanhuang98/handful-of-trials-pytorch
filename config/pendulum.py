@@ -85,13 +85,13 @@ class PtModel(nn.Module):
 
 
 class CartpoleConfigModule:
-    ENV_NAME = "MBRLCartpole-v0"
-    #ENV_NAME = "Pendulum-v0"
+    #ENV_NAME = "MBRLCartpole-v0"
+    ENV_NAME = "Pendulum-v0"
     TASK_HORIZON = 200
     NTRAIN_ITERS = 15
     NROLLOUTS_PER_ITER = 1
     PLAN_HOR = 25
-    MODEL_IN, MODEL_OUT = 6, 4
+    MODEL_IN, MODEL_OUT = 3, 1
     GP_NINDUCING_POINTS = 200
 
     # Create and move this tensor to GPU so that
