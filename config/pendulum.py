@@ -89,10 +89,10 @@ class CartpoleConfigModule:
     #ENV_NAME = "MBRLCartpole-v0"
     ENV_NAME = "Pendulum-v0"
     TASK_HORIZON = 200
-    NTRAIN_ITERS = 15
+    NTRAIN_ITERS = 30
     NROLLOUTS_PER_ITER = 1
     PLAN_HOR = 25
-    MODEL_IN, MODEL_OUT = 5, 1   # could change the shape of the tensor
+    MODEL_IN, MODEL_OUT = 5, 3   # could change the shape of the tensor
     GP_NINDUCING_POINTS = 200
 
     # Create and move this tensor to GPU so that
