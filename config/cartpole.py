@@ -60,7 +60,8 @@ class PtModel(nn.Module):
 
         # Transform inputs
         inputs = (inputs - self.inputs_mu) / self.inputs_sigma
-
+        print(inputs.size())
+        print(self.lin0_w.size())
         inputs = inputs.matmul(self.lin0_w) + self.lin0_b
         inputs = swish(inputs)
 

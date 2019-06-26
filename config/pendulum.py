@@ -60,7 +60,8 @@ class PtModel(nn.Module):
 
         # Transform inputs
         inputs = (inputs - self.inputs_mu) / self.inputs_sigma
-
+        # print(inputs.size())
+        # print(self.lin0_w.size())
         inputs = inputs.matmul(self.lin0_w) + self.lin0_b
         inputs = swish(inputs)
 
@@ -91,7 +92,7 @@ class CartpoleConfigModule:
     NTRAIN_ITERS = 15
     NROLLOUTS_PER_ITER = 1
     PLAN_HOR = 25
-    MODEL_IN, MODEL_OUT = 3, 1
+    MODEL_IN, MODEL_OUT = 5, 1   # could change the shape of the tensor
     GP_NINDUCING_POINTS = 200
 
     # Create and move this tensor to GPU so that

@@ -383,9 +383,9 @@ class MPC(Controller):
 
         # TS Optimization: Remove additional dimension
         predictions = self._flatten_to_matrix(predictions)
-        print('prediction')
-        print(predictions.size())
-        print(predictions)
+        # print('prediction')
+        # print(predictions.size())
+        # print(predictions)
 
         return self.obs_postproc(obs, predictions)
 
